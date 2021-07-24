@@ -66,11 +66,17 @@ class MultiHeadAttention(nn.Module):
 
         context, attn = self.scaled_dot_attn(query, key, value, mask)
         context = context.view(self.n_heads, batch_size, -1, self.attn_dim)
-        context = context.permute(1, 2, 0, 3).contiguous().view(batch_size, -1, self.num_heads * self.d_head)
+        context = context.permute(1, 2, 0, 3).contiguous().view(batch_size, -1, self.n_heads * self.attn_dim)
 
         return context, attn
 
 
+
+if __name__ == '__main__':
+    test = MultiHeadAttention()
+    input = torch.randn(16, 512)
+    a,b = test(input,input,input)
+    print(a.size()) # [16, 1, 512]
 
 
 
