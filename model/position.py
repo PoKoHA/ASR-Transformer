@@ -38,6 +38,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('PE', PE)
 
     def forward(self, length):
+        # todo input.size(1) 아니면 length
         return self.PE[:, :length]
 
 class Embedding(nn.Module):
@@ -50,7 +51,6 @@ class Embedding(nn.Module):
     def forward(self, inputs):
         # Transformer Paper) we multiply those weights by sqrt(d_model)
         return self.embedding(inputs) * self.sqrt_dim
-
 
 
 
