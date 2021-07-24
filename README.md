@@ -1,5 +1,5 @@
 ## Model
-### 1. 2D-Attention
+### 1. 2D-Attention (나중에 추가할 예정)
 
 ![Screenshot from 2021-07-24 03-21-26](https://user-images.githubusercontent.com/76771847/126824955-e44245a3-9ae2-402a-aebb-d486b13b0a8b.png)
 ![module](https://user-images.githubusercontent.com/76771847/126824739-dfc99133-8f25-4afe-b950-ef22076d3b95.png)
