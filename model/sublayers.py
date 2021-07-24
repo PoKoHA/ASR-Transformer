@@ -1,5 +1,37 @@
 import torch
 import torch.nn as nn
+from modules import LayerNorm
+
+class AddNorm(nn.Module):
+
+    def __init__(self, sublayer, d_model=512):
+        super(AddNorm, self).__init__()
+        self.sublayer = sublayer
+        self.layer_norm = LayerNorm(d_model)
+
+    def forward(self, *args):
+        residual = args[0]
+        output = self.sublayer(*args)
+
+        if isinstance(output, tuple):
+            # e.g) MulitHeadAttention 하면 return 값으로 (output, attn_map)
+            return self.layer_norm(output[0] + residual), output[1]
+
+        return self.layer_norm(output + residual)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class PositionWiseFeedForwardNet(nn.Module):
 
