@@ -1,7 +1,7 @@
 import torch
 
 """
-mask 할 곳은 1 padding position: 0
+Padding Mask 하는 곳
 """
 def get_attn_pad_mask(inputs, input_lengths, expand_length):
 
@@ -31,7 +31,9 @@ def get_attn_pad_mask(inputs, input_lengths, expand_length):
 
     return attn_pad_mask
 
-# Decoder 의 auto-regression property 를 위해서 사용할 예정
+"""
+Decoder 의 auto-regression property 를 위해서 사용할 예정
+"""
 def get_attn_subsequent_mask(seq):
     assert seq.dim() == 2
     attn_shape = [seq.size(0), seq.size(1), seq.size(1)]
