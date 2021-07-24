@@ -8,6 +8,7 @@
 
 ![c](https://user-images.githubusercontent.com/76771847/126824793-0e5bcfa1-86a5-4705-a08f-426aaffa8961.png)
 
+**실제 코드에서는 VGGExtractor를 먼저 걸치고 positionEncdoing SUM**
 ## Reference
 
 [speech-transformer]

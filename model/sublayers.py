@@ -19,20 +19,6 @@ class AddNorm(nn.Module):
 
         return self.layer_norm(output + residual)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class PositionWiseFeedForwardNet(nn.Module):
 
     def __init__(self, d_model=512, d_ff=2048):

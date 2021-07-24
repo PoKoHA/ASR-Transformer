@@ -55,9 +55,10 @@ class VGGExtractor(nn.Module):
 
     def __init__(self, input_dim, in_channels=1, out_channels=(64, 128)):
         super(VGGExtractor, self).__init__()
-        self.input_dim = input_dim
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+
+        self.input_dim = input_dim # default 80
+        self.in_channels = in_channels # 1
+        self.out_channels = out_channels # 64, 128
 
         # todo 얼마나 작아는지 확인
         self.conv = MaskCNN(

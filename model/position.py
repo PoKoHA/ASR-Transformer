@@ -42,7 +42,9 @@ class PositionalEncoding(nn.Module):
         return self.PE[:, :length]
 
 class Embedding(nn.Module):
-    
+    """
+    Decoder Input 은 음성이 아닌 Transcript 이니까 그 때 사용
+    """
     def __init__(self, num_embeddings, pad_id, d_model=512):
         super(Embedding, self).__init__()
         self.sqrt_dim = math.sqrt(d_model)
