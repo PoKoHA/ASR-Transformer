@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from modules import LayerNorm
+from model.modules import LayerNorm
 
 class AddNorm(nn.Module):
 

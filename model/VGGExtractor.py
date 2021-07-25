@@ -53,10 +53,9 @@ class MaskCNN(nn.Module):
 
 class VGGExtractor(nn.Module):
 
-    def __init__(self, input_dim, in_channels=1, out_channels=(64, 128)):
+    def __init__(self, input_dim=161, in_channels=1, out_channels=(64, 128)):
         super(VGGExtractor, self).__init__()
-
-        self.input_dim = input_dim # default 80
+        self.input_dim = input_dim # Frame 수가 됨
         self.in_channels = in_channels # 1
         self.out_channels = out_channels # 64, 128
 
@@ -86,7 +85,8 @@ class VGGExtractor(nn.Module):
 
     def forward(self, inputs, input_lengths):
         # todo print 인자
-        outputs, output_lengths = self.conv(inputs.unsqueeze(1).transpose(2, 3), input_lengths)
+
+        outputs, output_lengths = self.conv(inputs.transpose(2,3), input_lengths)
 
         batch_size, channels, dimension, seq_lengths = outputs.size()
         outputs = outputs.permute(0, 3, 1, 2) # [batch, seq_lengths, channels, dimension]

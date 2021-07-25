@@ -2,13 +2,13 @@ import random
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from attention import MultiHeadAttention
-from VGGExtractor import VGGExtractor
-from position import *
-from mask import *
-from modules import LayerNorm
-from sublayers import *
+from model.attention import MultiHeadAttention
+from model.VGGExtractor import VGGExtractor
+from model.position import *
+from model.mask import *
+from model.sublayers import *
 from utils import init_weight
 
 ################################
@@ -30,7 +30,7 @@ class EncoderLayer(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, d_model=512, input_dim=80, d_ff=2048, n_layers=6, n_heads=8, pad_id=0, dropout_p=0.3):
+    def __init__(self, d_model=512, input_dim=161, d_ff=2048, n_layers=6, n_heads=8, pad_id=0, dropout_p=0.3):
         super(Encoder, self).__init__()
 
         self.d_model = d_model
@@ -48,17 +48,20 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList([EncoderLayer(d_model, n_heads, d_ff) for _ in range(n_layers)])
 
     def forward(self, inputs, inputs_lengths):
+        # print('--[Encoder]--')
+        print("inputs1: ", inputs.size())
         conv_outputs, output_lengths = self.conv(inputs, inputs_lengths)
         # output_lengths: maskCNN 을 걸친 후에 줄어드는 length 값
 
         encoder_pad_mask = get_attn_pad_mask(conv_outputs, output_lengths, conv_outputs.size(1))
-
-        linear = self.linear(conv_outputs)
-        pos_encoding = self.positional_encoding(linear.size(1))
-        dropout = self.dropout(pos_encoding)
+        # print("conv_outputs: ", conv_outputs.size())
+        print("conv_outputs: ", conv_outputs.size())
+        outputs = self.linear(conv_outputs)
+        outputs += self.positional_encoding(outputs.size(1))
+        outputs = self.dropout(outputs)
 
         for layer in self.layers:
-            outputs, attn = layer(dropout, encoder_pad_mask)
+            outputs, attn = layer(outputs, encoder_pad_mask)
 
         return outputs, output_lengths
 
@@ -79,6 +82,8 @@ class DecoderLayer(nn.Module):
         output, self_attn = self.self_attention(inputs, inputs, inputs, mask)
         output, cross_attn = self.cross_attention(output, encoder_outputs, encoder_outputs, cross_mask)
         output = self.feed_forward(output)
+        print("output: ", output.size())
+        print("cross_attn: ", cross_attn.size())
 
         return output, self_attn, cross_attn
 
@@ -125,11 +130,13 @@ class Decoder(nn.Module):
             positional_encoding_length
     ):
         decoder_pad_mask = get_attn_pad_mask(
-            decoder_inputs, decoder_inputs_lengths, decoder_inputs_lengths.size(1)
+            decoder_inputs, decoder_inputs_lengths, decoder_inputs.size(1)
         )
-
         decoder_regression_mask = get_attn_subsequent_mask(decoder_inputs)
-        decoder_mask = torch.gt((decoder_pad_mask + decoder_regression_mask), 0)
+        # print("decoder_pad_mask: ", decoder_pad_mask)
+        # print("decoder_regression_mask: ", decoder_regression_mask)
+        decoder_mask = torch.gt((decoder_regression_mask + decoder_pad_mask), 0)
+        print("decoder_mask: ", decoder_mask)
         # gt 는 lt와 반대 lt: input < other / gt: input > output
         # 즉 0 이랑 같거나 작으면 False
 
@@ -145,14 +152,19 @@ class Decoder(nn.Module):
                 outputs, encoder_outputs, decoder_mask, encoder_pad_mask
             )
 
+        print("outputs: ", outputs.size())
         return outputs
 
-    def forward(self, encoder_outputs, targets=None, encoder_outputs_lengths=None, target_lengths=None, teacher_forcing_p=1.0):
+    def forward(self, encoder_outputs, encoder_outputs_lengths=None, targets=None, target_lengths=None, teacher_forcing_p=1.0):
+        print("--[Decoder]--")
+        print("encoder_outputs", encoder_outputs.size())
         batch_size = encoder_outputs.size(0)
         use_teacher_forcing = True if random.random() < teacher_forcing_p else False
 
+        # teacher forcing
         if targets is not None and use_teacher_forcing:
             targets = targets[targets != self.eos_id].view(batch_size, -1) # eos_id 제외
+            print("targets: ", targets.size())
             target_length = targets.size(1) # eos 제외한 real length
 
             outputs = self.forward_step(
@@ -192,7 +204,65 @@ class Decoder(nn.Module):
 
             return torch.stack(logits, dim=1)
 
+###################################
+# Transformer
+###################################
+class SpeechTransformer(nn.Module):
 
+    def __init__(self,
+                 num_classes,
+                 d_model=512,
+                 input_dim=80,
+                 pad_id=0,
+                 sos_id=2001,
+                 eos_id=2002,
+                 d_ff=2048,
+                 n_heads=8,
+                 n_encoder_layers=6,
+                 n_decoder_layers=6,
+                 dropout_p=0.3,
+                 max_length=128,
+                 teacher_forcing_p=1.0):
 
+        super(SpeechTransformer, self).__init__()
+        assert d_model % n_heads ==0
 
+        self.num_classes = num_classes
+        self.sos_id = sos_id
+        self.eos_id = eos_id
+        self.pad_id = pad_id
+        self.max_length = max_length
+        self.teacher_forcing_p = teacher_forcing_p
+
+        self.encoder = Encoder(
+            d_model=d_model,
+            input_dim=input_dim,
+            d_ff=d_ff,
+            n_layers=n_encoder_layers,
+            n_heads=n_heads,
+            dropout_p=dropout_p,
+            pad_id=pad_id
+        )
+
+        self.decoder = Decoder(
+            num_classes=num_classes,
+            d_model=d_model,
+            d_ff=d_ff,
+            n_layers=n_decoder_layers,
+            n_heads=n_heads,
+            dropout_p=dropout_p,
+            pad_id=pad_id,
+            sos_id=sos_id,
+            eos_id=eos_id
+        )
+
+    def forward(self, inputs, input_lengths, targets, target_lengths):
+        logits = None
+        encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
+        print("encoder_outputs 2: ", encoder_outputs.size())
+        logits = self.decoder(
+            encoder_outputs, encoder_output_lengths, targets, target_lengths, self.teacher_forcing_p
+        )
+
+        return logits
 
