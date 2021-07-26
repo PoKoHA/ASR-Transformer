@@ -1,12 +1,3 @@
-# 미완성 (문제점)
-VGGExtractor layer 중 마지막 Linear output_dim 이 length가 계속 바뀌므로
-
-계속 바뀜 ==> 1 iter만 돌아가고 터짐
-
-차후 수정해보기
-
-
-
 ## Model
 ### 1. 2D-Attention (나중에 추가할 예정)
 
@@ -33,3 +24,9 @@ https://ieeexplore.ieee.org/document/8682586
 **https://github.com/sooftware/speech-transformer**
 
 https://github.com/xingchensong/Speech-Transformer-plus-2DAttention
+
+## Dataset
+
+clovacall: https://github.com/clovaai/ClovaCall
+
+Ai_hub(1,000 hours)

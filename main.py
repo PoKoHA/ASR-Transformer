@@ -17,20 +17,26 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
 
+
 import Levenshtein as Lev
 # Levenshtein distance: 두 시퀀스 간의 차이를 측정하기 위한 문자열 메트릭
 
-from Dataset import *
+from data.vocab import *
+from data.data_loader import AudioDataLoader
+from data.sampler import BucketingSampler
+from data.dataset import MelFilterBankDataset
+
 from model.model import SpeechTransformer
+from utils import ScheduleAdam
 
 parser = argparse.ArgumentParser()
 # Datasets
 parser.add_argument('--train-file', type=str,
-                    help='data list about train dataset', default='data/train.json')
+                    help='data list about train dataset', default='dataset/train.json')
 parser.add_argument('--test-file-list',
-                    help='data list about test dataset', default=['data/test.json'])
-parser.add_argument('--labels-path', default='data/kor_syllable.json', help='Contains large characters over korean')
-parser.add_argument('--dataset-path', default='data', help='Target dataset path')
+                    help='data list about test dataset', default=['dataset/test.json'])
+parser.add_argument('--labels-path', default='dataset/kor_syllable.json', help='Contains large characters over korean')
+parser.add_argument('--dataset-path', default='dataset', help='Target dataset path')
 # Hyperparameters
 parser.add_argument('--n-encoder-layers', type=int, default=6, help='number of layers of model (default: 3)')
 parser.add_argument('--d-model', type=int, default=512, help='hidden size of model (default: 512)')
@@ -38,7 +44,7 @@ parser.add_argument('--n-decoder-layers', type=int, default=6, help='number of p
 parser.add_argument('--n-heads', type=int, default=8)
 parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate in training (default: 0.3)')
 parser.add_argument('--d-ff', type=int, default=2048)
-parser.add_argument('--input-dim', type=int, default=64)
+parser.add_argument('--input-dim', type=int, default=80)
 parser.add_argument('--output-dim', type=int, default=80)
 
 parser.add_argument('--batch-size', type=int, default=32, help='Batch size in training (default: 32)')
@@ -53,10 +59,14 @@ parser.add_argument('--teacher-forcing', type=float, default=1.0,
                     help='Teacher forcing ratio in decoder (default: 1.0)')
 parser.add_argument('--max-len', type=int, default=80, help='Maximum characters of sentence (default: 80)')
 parser.add_argument('--max-norm', default=400, type=int, help='Norm cutoff to prevent explosion of gradients')
+parser.add_argument('--warm-steps', default=4000, type=int)
+
 # Audio Config
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sampling Rate')
-parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram')
-parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram')
+parser.add_argument('--num-mels', default=80, type=int)
+parser.add_argument('--window-size', default=25, type=float, help='Window size for spectrogram')
+parser.add_argument('--window-stride', default=10, type=float, help='Window stride for spectrogram')
+
 # System
 parser.add_argument('--print-freq', default=1, type=int)
 parser.add_argument('--resume', default=None, type=str, metavar='PATH' )
@@ -66,7 +76,6 @@ parser.add_argument('--seed', type=int, default=None, help='random seed (default
 parser.add_argument('--mode', type=str, default='train', help='Train or Test')
 parser.add_argument('--finetune', dest='finetune', action='store_true', default=False,
                     help='Finetune the model after load model')
-
 
 char2index = dict()
 index2char = dict()
@@ -114,8 +123,9 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # audio 설정
     audio_conf = dict(sample_rate=args.sample_rate, # 16,000
-                      window_size=args.window_size, # .02
-                      window_stride=args.window_stride) # .01
+                      num_mel=args.num_mels, # 80
+                      window_length=args.window_size, # 25ms
+                      window_stride=args.window_stride) # 10ms
 
     batch_size = args.batch_size * args.num_gpu # 32 * 1
 
@@ -136,19 +146,15 @@ def main_worker(gpu, ngpus_per_node, args):
 
     train_dataset_path = os.path.join(args.dataset_path, "wavs_train")
     # print(train_dataset_path) = data/wavs_train
-    train_dataset = SpectrogramDataset(audio_conf=audio_conf,
+    train_dataset = MelFilterBankDataset(audio_conf=audio_conf,
                                        dataset_path=train_dataset_path,
                                        data_list=trainData_list, # 파일명, text, speaker id
                                        char2index=char2index, sos_id=SOS_token, eos_id=EOS_token,
                                        normalize=True,
                                        mode='train')
-    # Return: spec, transcript
-    # spec: Tensor[1 + n_fft/2 , Frame(length / stride)]
-    # transcript: numpy [sos, 3, 5, ....., eos]
 
     train_sampler = BucketingSampler(data_source=train_dataset, batch_size=batch_size)
     train_loader = AudioDataLoader(train_dataset, num_workers=args.num_workers, batch_sampler=train_sampler)
-    # output: seqs, targets, seq_lengths, target_lengths
 
     # Test dataset/ loader
     testLoader_dict = {}
@@ -160,7 +166,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # print(testData_list)
             # [{"wav": "....", "text":, ...., speaker_id: ....}]
 
-        test_dataset = SpectrogramDataset(audio_conf=audio_conf,
+        test_dataset = MelFilterBankDataset(audio_conf=audio_conf,
                                           dataset_path=test_dataset_path,
                                           data_list=testData_list,
                                           char2index=char2index, sos_id=SOS_token, eos_id=EOS_token,
@@ -170,15 +176,16 @@ def main_worker(gpu, ngpus_per_node, args):
         # print("testLoader_dict: ", testLoader_dict) #{'data/test.json': <Dataset.AudioDataLoader object at 0x7fe37f7311d0>}
         # test file 들을 dictionary 형태로 저장 각 파일명해가지고
 
-    model = SpeechTransformer(num_classes=num_classes, d_model=args.d_model, input_dim=args.input_dim,
-                              pad_id=PAD_token, sos_id=SOS_token, eos_id=EOS_token, d_ff=args.d_ff,
-                              n_heads=args.n_heads, n_encoder_layers=args.n_encoder_layers,
-                              n_decoder_layers=args.n_decoder_layers, dropout_p=args.dropout,
-                              max_length=args.max_len, teacher_forcing_p=args.teacher_forcing)
+        # Model
+        model = SpeechTransformer(num_classes=num_classes, d_model=args.d_model, input_dim=args.input_dim,
+                                  pad_id=PAD_token, sos_id=SOS_token, eos_id=EOS_token, d_ff=args.d_ff,
+                                  n_heads=args.n_heads, n_encoder_layers=args.n_encoder_layers,
+                                  n_decoder_layers=args.n_decoder_layers, dropout_p=args.dropout,
+                                  max_length=args.max_len, teacher_forcing_p=args.teacher_forcing)
     # print("[Model]")
-    # print(model)
 
     if args.num_gpu != 1:
+        print("DataParallel 사용")
         model = nn.DataParallel(model).cuda(args.gpu)
     else:
         print("GPU 1개만 사용")
@@ -190,7 +197,12 @@ def main_worker(gpu, ngpus_per_node, args):
         print("No saved model")
 
     # Optimizer / Criterion
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
+    optimizer = ScheduleAdam(
+        torch.optim.Adam(model.parameters(), betas=(0.9, 0.98), eps=1e-9),
+        hidden_dim=args.d_model,
+        warm_steps=args.warm_steps
+    )
+
     criterion = nn.CrossEntropyLoss(reduction='mean').cuda(args.gpu)
 
     # Test
@@ -210,8 +222,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
         for epoch in range(args.start_epoch, args.epochs):
             train_loss, train_cer = train(model, train_loader, criterion, optimizer, args, epoch, train_sampler,
-                                          args.max_norm, args.teacher_forcing)
-            # args.max_norm = 400 / args.teacher_forcing = 1.0
+                                          args.max_norm)
+            # args.max_norm = 400
 
             cer_list = []
             for test_file in args.test_file_list:
@@ -232,13 +244,7 @@ def main_worker(gpu, ngpus_per_node, args):
             print("Shuffling batches...")
             train_sampler.shuffle(epoch)
 
-            for g in optimizer.param_groups:
-                g['lr'] = g['lr'] / args.learning_anneal
-            print('Learning rate annealed to: {lr:.6f}'.format(lr=g['lr']))
-
-
-def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, max_norm=400,
-              teacher_forcing_ratio=1.0):
+def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, max_norm=400):
     total_loss = 0.
     total_num = 0
     total_dist = 0
@@ -250,10 +256,10 @@ def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, 
     for i, (data) in enumerate(data_loader):
         feats, scripts, feat_lengths, script_lengths = data
         # seqs, targets, seq_lengths, target_lengths
-        # print("seqs: ", feats.size()) # torch.Size([16, 1, 161, 2817])
-        # print("targets: ", scripts.size()) # torch.Size([16, 49])
-        # print("seq_lengths: ", feat_lengths.size()) # torch.Size([16])
-        # print("target_lengths: ", script_lengths) # [23, 30, 32, 18, 49, 21, 16, 27, 25, 32, 24, 12, 29, 24, 13, 17]
+        # print("seqs: ", feats.size())
+        # print("targets: ", scripts.size())
+        # print("seq_lengths: ", feat_lengths.size())
+        # print("target_lengths: ", script_lengths)
 
         optimizer.zero_grad()
 
@@ -263,20 +269,13 @@ def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, 
 
         src_len = scripts.size(1)
         target = scripts[:, 1:]
-        # print(target.size()) # [batch=16, length]
-        # print(target) # sos 제외한 한 문장의 인덱스들
-        # 2002: eos
-        # [29, 352, 263, 4, 6, 137, 55, 126, 2002, 0, 0, 0,
-        #  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        #  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        #  0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        # [51, 486, 374, 4, 468, 100, 37, 5, 4, 295, 46, 27,
-        #  15, 126, 2002, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        #  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        #  0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
-        print("seqs: ", feats.size())
+        print("target: ", target.size())
+
         logit = model(feats, feat_lengths, scripts, script_lengths)
-        pred = logit.max(-1)[1]
+
+        print("logit: ", logit.size())
+        # print("logit2: ", logit.contiguous().view(-1, logit.size(-1)).size())
+        y_hat = logit.max(-1)[1]
 
         loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
         total_loss += loss.item()
@@ -286,7 +285,7 @@ def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, 
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         optimizer.step()
 
-        dist, length, _ = get_distance(target, pred)
+        dist, length, _ = get_distance(target, y_hat)
         total_dist += dist
         total_length += length
         cer = float(dist / length) * 100 # 백분율: (ref 와 hyp 의 차이) / ref 문자열
@@ -324,11 +323,9 @@ def evaluate(model, data_loader, criterion, args, save_output=False):
             target = scripts[:, 1:]
 
             # teacher forcing 안쓰므로 scripts 필요 X
-            logit = model(feats, feat_lengths, None, teacher_forcing_ratio=0.0)
-            logit = torch.stack(logit, dim=1).cuda(args.gpu)
+            logit = model(feats, feat_lengths, scripts, script_lengths)
             y_hat = logit.max(-1)[1]
 
-            logit = logit[:,:target.size(1),:] # target length까지만
             loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
             total_loss += loss.item()
             total_num += sum(feat_lengths).item()
@@ -354,7 +351,6 @@ def get_distance(ref_labels, hyp_labels):
     total_dist = 0
     total_length = 0
     transcripts = []
-    print(len(ref_labels), len(hyp_labels)) # 8, 1
     for i in range(len(ref_labels)):
         ref = label_to_string(ref_labels[i])
         hyp = label_to_string(hyp_labels[i])
@@ -405,23 +401,3 @@ def char_distance(ref, hyp):
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

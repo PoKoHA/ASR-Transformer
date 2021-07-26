@@ -18,8 +18,8 @@ class ScaledDotProductAttention(nn.Module):
         score = torch.bmm(query, key.transpose(1, 2)) / self.sqrt_dim
 
         if mask is not None:
-            print("score: ", score.size())
-            print("mask: ", mask.size())
+            # print("score: ", score.size())
+            # print("mask: ", mask.size())
             score.masked_fill_(mask, -np.inf)
 
         attn = F.softmax(score, -1)
