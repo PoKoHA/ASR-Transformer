@@ -64,8 +64,8 @@ parser.add_argument('--warm-steps', default=4000, type=int)
 # Audio Config
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sampling Rate')
 parser.add_argument('--num-mels', default=80, type=int)
-parser.add_argument('--window-size', default=25, type=float, help='Window size for spectrogram')
-parser.add_argument('--window-stride', default=10, type=float, help='Window stride for spectrogram')
+parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram')
+parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram')
 
 # System
 parser.add_argument('--print-freq', default=1, type=int)
@@ -124,7 +124,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # audio 설정
     audio_conf = dict(sample_rate=args.sample_rate, # 16,000
                       num_mel=args.num_mels, # 80
-                      window_length=args.window_size, # 25ms
+                      window_size=args.window_size, # 25ms
                       window_stride=args.window_stride) # 10ms
 
     batch_size = args.batch_size * args.num_gpu # 32 * 1
@@ -177,7 +177,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # test file 들을 dictionary 형태로 저장 각 파일명해가지고
 
         # Model
-        model = SpeechTransformer(num_classes=num_classes, d_model=args.d_model, input_dim=args.input_dim,
+        model = SpeechTransformer(args=args, num_classes=num_classes, d_model=args.d_model, input_dim=args.input_dim,
                                   pad_id=PAD_token, sos_id=SOS_token, eos_id=EOS_token, d_ff=args.d_ff,
                                   n_heads=args.n_heads, n_encoder_layers=args.n_encoder_layers,
                                   n_decoder_layers=args.n_decoder_layers, dropout_p=args.dropout,
@@ -269,11 +269,11 @@ def train(model, data_loader, criterion, optimizer, args, epoch, train_sampler, 
 
         src_len = scripts.size(1)
         target = scripts[:, 1:]
-        print("target: ", target.size())
+        # print("target: ", target.size())
 
         logit = model(feats, feat_lengths, scripts, script_lengths)
 
-        print("logit: ", logit.size())
+        # print("logit: ", logit.size())
         # print("logit2: ", logit.contiguous().view(-1, logit.size(-1)).size())
         y_hat = logit.max(-1)[1]
 

@@ -9,8 +9,9 @@ import torch.nn as nn
 
 class MaskCNN(nn.Module):
 
-    def __init__(self, sequential):
+    def __init__(self, sequential, args):
         super(MaskCNN, self).__init__()
+        self.args = args
         self.sequential = sequential
 
     def forward(self, inputs, seq_lengths): # todo print
@@ -19,7 +20,7 @@ class MaskCNN(nn.Module):
         for module in self.sequential:
             output = module(inputs)
             mask = torch.BoolTensor(output.size()).fill_(0)
-            mask = mask.cuda()
+            mask = mask.cuda(self.args.gpu)
 
             seq_lengths = self._get_sequence_lengths(module, seq_lengths)
 
@@ -53,7 +54,8 @@ class MaskCNN(nn.Module):
 
 class VGGExtractor(nn.Module):
 
-    def __init__(self, input_dim=80, in_channels=1, out_channels=(64, 128)):
+    def __init__(self, args, input_dim=80, in_channels=1, out_channels=(64, 128)):
+        self.args = args
         super(VGGExtractor, self).__init__()
         self.input_dim = input_dim # Frame 수가 됨
         self.in_channels = in_channels # 1
@@ -76,7 +78,7 @@ class VGGExtractor(nn.Module):
                 nn.BatchNorm2d(num_features=out_channels[1]),
                 nn.ReLU(),
                 nn.MaxPool2d(2, stride=2),
-            )
+            ), args=args
         )
 
     # todo 의미

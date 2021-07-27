@@ -19,3 +19,4 @@ class FilterBankFeatureTransform():
             frame_length=self.window_length,
             frame_shift=self.window_stride
         ).transpose(0, 1).numpy()
+

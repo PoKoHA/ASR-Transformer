@@ -36,10 +36,10 @@ def get_attn_pad_mask(inputs, input_lengths, expand_length):
 """
 Decoder 의 auto-regression property 를 위해서 사용할 예정
 """
-def get_attn_subsequent_mask(seq):
+def get_attn_subsequent_mask(seq, args):
     assert seq.dim() == 2
     attn_shape = [seq.size(0), seq.size(1), seq.size(1)]
-    subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).bool().cuda()
+    subsequent_mask = torch.triu(torch.ones(attn_shape), diagonal=1).bool().cuda(args.gpu)
     # torch.triu(input, diagonal=0, *, out=None) 경우
     # [1 1 1 1 1]
     # [0 1 1 1 1]
@@ -48,6 +48,6 @@ def get_attn_subsequent_mask(seq):
     # [0 0 0 0 1]
     # upper triangular part 를 만듬 diagonal = 1 인 경우 (0,1)에서 시작
     # -1 인 경우 (1,0)에서 시작
-    subsequent_mask = subsequent_mask.cuda()
+    subsequent_mask = subsequent_mask.cuda(args.gpu)
 
     return subsequent_mask

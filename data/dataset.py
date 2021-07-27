@@ -1,9 +1,10 @@
 import librosa
 import numpy as np
 import os
+import scipy.signal
+import matplotlib.pyplot as plt
 
 import torch
-import torchaudio
 from torch.utils.data import Dataset
 
 from data.filterbank import FilterBankFeatureTransform
@@ -12,7 +13,7 @@ from data.augment import spec_augment
 def load_audio(audio_path, sample_rate):
     assert audio_path.endswith('wav'), "only wav files"
     signal, sr = librosa.load(audio_path, sr=sample_rate)
-
+    # print("AAAA", signal.shape, sr) # 16,000 / signal 은 다양한 np 값
     return signal
 
 
@@ -37,7 +38,7 @@ class MelFilterBankDataset(Dataset):
         self.normalize = normalize # Train: True
         self.dataset_path = dataset_path # data/wavs_train
         self.transforms = FilterBankFeatureTransform(
-            audio_conf["num_mel"], audio_conf["window_length"], audio_conf["window_stride"]
+            audio_conf["num_mel"], audio_conf["window_size"], audio_conf["window_stride"]
         )
         self.mode = mode
 
@@ -60,7 +61,18 @@ class MelFilterBankDataset(Dataset):
     def parse_audio(self, audio_path):
         signal = load_audio(audio_path, sample_rate=self.audio_conf['sample_rate'])
 
-        feature = self.transforms(signal)
+        # feature = self.transforms(signal)
+        # print("feature: ", feature.shape) # (80 고정설정값, 79/80 ..)
+        # plt.figure(figsize=(15, 10))
+        # plt.plot(feature)
+        # plt.show()
+        n_fft = int(self.audio_conf['sample_rate'] * self.audio_conf['window_size'])
+        window_size = n_fft
+        stride_size = int(self.audio_conf['sample_rate'] * self.audio_conf['window_stride'])
+        D = librosa.stft(signal, n_fft=n_fft, hop_length=stride_size, win_length=window_size, window=scipy.signal.windows.hamming)
+        spect, phase = librosa.magphase(D)
+        feature = np.log1p(spect)
+
 
         # normalize
         feature -= feature.mean()

@@ -30,15 +30,16 @@ class EncoderLayer(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, d_model=512, input_dim=80, d_ff=2048, n_layers=6, n_heads=8, pad_id=0, dropout_p=0.3):
+    def __init__(self, args, d_model=512, input_dim=80, d_ff=2048, n_layers=6, n_heads=8, pad_id=0, dropout_p=0.3):
         super(Encoder, self).__init__()
 
+        self.args = args
         self.d_model = d_model
         self.n_layers = n_layers
         self.n_heads = n_heads
         self.pad_id = pad_id
 
-        self.conv = VGGExtractor(input_dim)
+        self.conv = VGGExtractor(args=args, input_dim=input_dim)
         self.linear = nn.Linear(self.conv.get_output_dim(), d_model) # README 참고 Linear 한번 해주고 나서 Encoder layer 실행
         init_weight(self.linear)
 
@@ -91,6 +92,7 @@ class Decoder(nn.Module):
 
     def __init__(
             self,
+            args,
             num_classes,
             d_model=512,
             d_ff=2048,
@@ -103,6 +105,7 @@ class Decoder(nn.Module):
     ):
         super(Decoder, self).__init__()
 
+        self.args = args
         self.d_model = d_model
         self.n_layers = n_layers
         self.n_heads = n_heads
@@ -132,7 +135,7 @@ class Decoder(nn.Module):
         decoder_pad_mask = get_attn_pad_mask(
             decoder_inputs, decoder_inputs_lengths, decoder_inputs.size(1)
         )
-        decoder_regression_mask = get_attn_subsequent_mask(decoder_inputs)
+        decoder_regression_mask = get_attn_subsequent_mask(decoder_inputs, self.args)
         # print("decoder_pad_mask: ", decoder_pad_mask)
         # print("decoder_regression_mask: ", decoder_regression_mask)
         decoder_mask = torch.gt((decoder_regression_mask + decoder_pad_mask), 0)
@@ -210,6 +213,7 @@ class Decoder(nn.Module):
 class SpeechTransformer(nn.Module):
 
     def __init__(self,
+                 args,
                  num_classes,
                  d_model=512,
                  input_dim=80,
@@ -235,6 +239,7 @@ class SpeechTransformer(nn.Module):
         self.teacher_forcing_p = teacher_forcing_p
 
         self.encoder = Encoder(
+            args=args,
             d_model=d_model,
             input_dim=input_dim,
             d_ff=d_ff,
@@ -245,6 +250,7 @@ class SpeechTransformer(nn.Module):
         )
 
         self.decoder = Decoder(
+            args=args,
             num_classes=num_classes,
             d_model=d_model,
             d_ff=d_ff,
@@ -257,9 +263,12 @@ class SpeechTransformer(nn.Module):
         )
 
     def forward(self, inputs, input_lengths, targets, target_lengths):
+        # print("target: ",targets.size())
+        # print("target_lengths: ",target_lengths.size())
         logits = None
         encoder_outputs, encoder_output_lengths = self.encoder(inputs, input_lengths)
         # print("encoder_outputs 2: ", encoder_outputs.size())
+        # print("encoder_outputs 3: ", encoder_output_lengths.size())
         logits = self.decoder(
             encoder_outputs, encoder_output_lengths, targets, target_lengths, self.teacher_forcing_p
         )
