@@ -30,3 +30,15 @@ https://github.com/xingchensong/Speech-Transformer-plus-2DAttention
 clovacall: https://github.com/clovaai/ClovaCall
 
 Ai_hub(1,000 hours)
+
+## Result
+Titian RTX 1개로 약(2일) 학습
+
+`python main.py --epoch 100 --batch-size 8 --warm-steps 750000 --input-dim 161 --max-len 1000 --gpu 0`
+
+![asr-transformer error rate](https://user-images.githubusercontent.com/76771847/127418684-4c784e9e-2347-41c9-ad50-8c9323ccb189.png)
+
+Error Rate 23%로 2015년 model인 LAS model 보다 1% 높게 나왔지만  Transformer 특성 상 Big Data에 더 좋은 performance를 보여주는 성향이 있음
+Clovacall Dataset은 Training이 81시간으로 작은 Dataset(50~60epoch 때부터 training loss가 0으로 수렴하여 더이상 학습하지 않는 overfitting이 일어남)
+
+AI_hub(1,000 hours)로 학습 시 더 좋은 performance 기대
